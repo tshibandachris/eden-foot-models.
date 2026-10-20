@@ -1,0 +1,35 @@
+
+name: Eden Foot Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "eden_foot_baseline.py"
+      - "requirements.txt"
+      - ".github/workflows/baseline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run Elo and Poisson models
+        run: python -u eden_foot_baseline.py
