@@ -9,9 +9,9 @@ on:
         type: choice
         default: "eden_foot_v4.py"
         options:
-          - eden_foot_v4.py
-          - eden_foot_v3.py
-          - eden_foot_v2.py
+          - eden_foot_v4-1.py
+          - eden_foot_v3-1.py
+          - eden_foot_v2-1.py
           - eden_foot_baseline.py
       league:
         description: "Code ligue (E0, E1, SP1, D1, D2, I1, F1...)"
