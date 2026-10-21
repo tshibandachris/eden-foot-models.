@@ -8,7 +8,7 @@ on:
         description: "Script à lancer"
         type: choice
         required: true
-        default: "eden_foot_baseline.py"
+        default: "eden_foot_v4-1.py"
         options:
           - eden_foot_baseline.py
           - eden_foot_v4-1.py
