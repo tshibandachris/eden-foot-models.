@@ -5,9 +5,10 @@ on:
     inputs:
       script:
         description: "Script à lancer"
-        default: "eden_foot_v3.py"
+        default: "eden_foot_v4.py"
         type: choice
         options:
+          - eden_foot_v4.py
           - eden_foot_v3.py
           - eden_foot_v2.py
           - eden_foot_baseline.py
