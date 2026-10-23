@@ -25,7 +25,7 @@ try:
         match_losses, norm, run_elo,
     )
     from eden_foot_v3 import ELO_DEFAULT, ELO_GRID, fit_weights, prob_feats
-    from eden_foot_v4 import SEASONS_V4, DixonColes, report
+    from eden_foot_v4 import SEASONS_V4, DixonColes
 except ImportError as exc:
     raise SystemExit(
         f"Import impossible : {exc}\n"
@@ -49,6 +49,45 @@ def print_header(title):
     print(line)
     print(title)
     print(line)
+
+
+def multiclass_ece(P, y, bins=10):
+    """ECE one-vs-rest, pondérée par classe et par bin de probabilité."""
+    P = np.asarray(norm(P), dtype=float)
+    y = np.asarray(y, dtype=int)
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    total = 0.0
+    n = len(y)
+    if n == 0:
+        return float("nan")
+    for k in range(3):
+        confidence = P[:, k]
+        observed = (y == k).astype(float)
+        for b in range(bins):
+            if b == bins - 1:
+                mask = (confidence >= edges[b]) & (confidence <= edges[b + 1])
+            else:
+                mask = (confidence >= edges[b]) & (confidence < edges[b + 1])
+            count = int(mask.sum())
+            if count:
+                total += (count / (3 * n)) * abs(confidence[mask].mean() - observed[mask].mean())
+    return float(total)
+
+
+def report(name, P, y):
+    """Métriques multiclasses; les égalités au maximum sont réparties équitablement."""
+    P = np.asarray(norm(P), dtype=float)
+    y = np.asarray(y, dtype=int)
+    ll = match_losses(P, y).mean()
+    brier = ((P - np.eye(3)[y]) ** 2).sum(axis=1).mean()
+    maxima = np.isclose(P, P.max(axis=1, keepdims=True), rtol=1e-10, atol=1e-12)
+    tie_counts = maxima.sum(axis=1)
+    hit_share = maxima[np.arange(len(y)), y] / tie_counts
+    acc = hit_share.mean()
+    print(
+        f"{name:<34} log-loss {ll:.4f} | Brier {brier:.4f} | "
+        f"ECE {multiclass_ece(P, y):.4f} | préc. {acc:.1%}"
+    )
 
 
 def protocol_hash():
