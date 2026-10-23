@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pytest
       - name: Compile current unsuffixed modules
-        run: python -m py_compile eden_foot_v2.py eden_foot_v3.py eden_foot_v4.py
+        run: python -m py_compile eden_foot_v2.py eden_foot_v3.py eden_foot_v4.py eden_foot_v5.py
       - name: Test no same-date leakage
         run: python -m pytest -q tests/test_v5_3_protocol.py
       - name: Verify baseline remains unchanged
@@ -33,3 +33,16 @@ jobs:
           expected="6aaf542da01ee095fd0a0525c1860d975c23a31e"
           echo "Baseline Git blob SHA: $actual"
           test "$actual" = "$expected"
+
+      - name: Execute walk-forward complet sur E0
+        shell: bash
+        run: |
+          set -o pipefail
+          python -u eden_foot_v5.py --league E0 --test-seasons 3 --holdout-seasons 1 2>&1 | tee resultats-v5.3-E0.txt
+      - name: Publier le journal d'évaluation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eden-foot-v5-3-E0-results
+          path: resultats-v5.3-E0.txt
+          if-no-files-found: warn
