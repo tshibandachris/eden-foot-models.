@@ -83,14 +83,14 @@ def record_forecast(
 
     kickoff = _utc(forecast["kickoff_utc"], "kickoff_utc")
     issued = _utc(forecast["issued_at_utc"], "issued_at_utc")
+    if kickoff <= issued:
+        raise ValueError("Forecast must be issued strictly before kickoff")
     clock = now or datetime.now(timezone.utc)
     if clock.tzinfo is None or clock.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
     clock = clock.astimezone(timezone.utc)
     if issued > clock:
         raise ValueError("issued_at_utc cannot be in the future")
-    if kickoff <= issued:
-        raise ValueError("Forecast must be issued strictly before kickoff")
     probabilities = _validate_probabilities(forecast["probabilities"], "probabilities")
 
     normalized = {
@@ -132,7 +132,7 @@ def score_forecasts(
     now: datetime | None = None,
     scores_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Append scores for completed fixtures to a separate results JSONL file.
+    """Append scores for completed fixtures to a separate score JSONL file.
 
     Results input is JSONL with fixture_id, outcome (H/D/A), and observed_at_utc.
     The caller must only provide verified final results. Existing score records
@@ -151,10 +151,12 @@ def score_forecasts(
         observed = _utc(result.get("observed_at_utc", ""), "observed_at_utc")
         if not fixture_id or outcome not in RESULT_TO_INDEX:
             raise ValueError("Each result requires fixture_id, outcome H/D/A, observed_at_utc")
-        if observed > clock:
-            raise ValueError("Result observation timestamp cannot be in the future")
         if fixture_id in result_by_fixture and result_by_fixture[fixture_id]["outcome"] != outcome:
             raise ValueError(f"Conflicting outcomes for fixture {fixture_id}")
+        # Results not yet observed by the scoring clock must not block scoring
+        # of other fixtures or cause a pre-kickoff scoring run to fail.
+        if observed > clock:
+            continue
         result_by_fixture[fixture_id] = {"outcome": outcome, "observed_at_utc": observed}
 
     out_path = Path(scores_path) if scores_path is not None else Path(str(results_path) + ".scores.jsonl")
@@ -168,7 +170,9 @@ def score_forecasts(
         if kickoff > clock:
             continue
         result = result_by_fixture.get(str(forecast["fixture_id"]))
-        if result is None or forecast.get("forecast_sha256") in already_scored:
+        if result is None or result["observed_at_utc"] < kickoff:
+            continue
+        if forecast.get("forecast_sha256") in already_scored:
             continue
         probs = _validate_probabilities(forecast["probabilities"], "probabilities")
         actual = RESULT_TO_INDEX[result["outcome"]]
