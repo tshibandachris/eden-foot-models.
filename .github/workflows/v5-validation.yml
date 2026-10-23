@@ -77,4 +77,4 @@ jobs:
           name: eden-foot-v5-3-E0-snapshot-run-${{ github.run_number }}
           path: resultats-v5.3-E0.txt
           if-no-files-found: warn
-          retention-days: 400
+          retention-days: 90
