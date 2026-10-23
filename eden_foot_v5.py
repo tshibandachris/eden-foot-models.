@@ -74,6 +74,53 @@ def multiclass_ece(P, y, bins=10):
     return float(total)
 
 
+def classwise_ece(P, y, bins=10):
+    """ECE one-vs-rest séparée pour domicile, nul et extérieur."""
+    P = np.asarray(norm(P), dtype=float)
+    y = np.asarray(y, dtype=int)
+    if len(y) == 0:
+        return (float("nan"),) * 3
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    scores = []
+    for k in range(3):
+        confidence = P[:, k]
+        observed = (y == k).astype(float)
+        score = 0.0
+        for b in range(bins):
+            mask = ((confidence >= edges[b]) &
+                    ((confidence <= edges[b + 1]) if b == bins - 1 else (confidence < edges[b + 1])))
+            if mask.any():
+                score += mask.mean() * abs(confidence[mask].mean() - observed[mask].mean())
+        scores.append(float(score))
+    return tuple(scores)
+
+
+def print_reliability_table(name, P, y, bins=10):
+    """Table de fiabilité one-vs-rest; les bins vides sont omis."""
+    P = np.asarray(norm(P), dtype=float)
+    y = np.asarray(y, dtype=int)
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    print(f"\nCalibration par issue — {name} (probabilité moyenne / fréquence observée)")
+    for k, outcome in enumerate(OUTCOMES):
+        print(f"  {outcome}:")
+        confidence = P[:, k]
+        observed = (y == k).astype(float)
+        any_bin = False
+        for b in range(bins):
+            mask = ((confidence >= edges[b]) &
+                    ((confidence <= edges[b + 1]) if b == bins - 1 else (confidence < edges[b + 1])))
+            count = int(mask.sum())
+            if count == 0:
+                continue
+            any_bin = True
+            close = "]" if b == bins - 1 else ")"
+            print(f"    [{edges[b]:.1f}, {edges[b + 1]:.1f}{close} n={count:4d} | "
+                  f"prévue={confidence[mask].mean():.3f} | observée={observed[mask].mean():.3f} | "
+                  f"écart={confidence[mask].mean()-observed[mask].mean():+.3f}")
+        if not any_bin:
+            print("    aucun match exploitable")
+
+
 def report(name, P, y):
     """Métriques multiclasses; les égalités au maximum sont réparties équitablement."""
     P = np.asarray(norm(P), dtype=float)
@@ -84,9 +131,11 @@ def report(name, P, y):
     tie_counts = maxima.sum(axis=1)
     hit_share = maxima[np.arange(len(y)), y] / tie_counts
     acc = hit_share.mean()
+    ece_h, ece_d, ece_a = classwise_ece(P, y)
     print(
         f"{name:<34} log-loss {ll:.4f} | Brier {brier:.4f} | "
-        f"ECE {multiclass_ece(P, y):.4f} | préc. {acc:.1%}"
+        f"ECE {multiclass_ece(P, y):.4f} | ECE H/N/E {ece_h:.3f}/{ece_d:.3f}/{ece_a:.3f} | "
+        f"préc. {acc:.1%}"
     )
 
 
@@ -421,6 +470,11 @@ def main():
         for name in core:
             report(name, P[name][common], yt)
         report("Hasard (1/3)", np.full((len(yt), 3), 1 / 3), yt)
+        if title.startswith("PÉRIODE FIGÉE"):
+            # Détail par tranches pour v4 et le marché d'ouverture.
+            # Tous les modèles ont déjà leurs ECE H/N/E affichées ci-dessus.
+            for name in ("v4 : ensemble pondéré (4)", O):
+                print_reliability_table(name, P[name][common], yt)
         print("\nDifférences de log-loss (premier modèle moins second ; négatif = premier meilleur) :")
         result = {"elo_open": paired("Elo (réglé)", O, common, "Elo réglé - Marché ouverture")}
         paired("Elo (réglé)", C, common, "Elo réglé - Marché clôture")

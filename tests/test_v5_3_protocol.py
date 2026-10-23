@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from eden_foot_v2 import form_features, run_elo
-from eden_foot_v5 import multiclass_ece, report
+from eden_foot_v5 import classwise_ece, multiclass_ece, report
 
 
 def _matches(order=None):
@@ -55,3 +55,29 @@ def test_uniform_probabilities_split_argmax_ties_fairly(capsys):
     report("Uniforme", p, y)
     output = capsys.readouterr().out
     assert "préc. 33.3%" in output
+
+
+
+def test_future_result_changes_do_not_change_any_pre_match_elo_features():
+    original = _matches()
+    altered = original.copy()
+    altered.loc[2, ["hg", "ag"]] = [0, 5]
+    assert np.allclose(run_elo(original), run_elo(altered))
+
+
+def test_future_result_changes_do_not_change_same_match_pre_match_form():
+    original = _matches()
+    altered = original.copy()
+    altered.loc[2, ["hg", "ag", "hs", "as_", "hst", "ast"]] = [0, 5, 2, 14, 1, 8]
+    before = form_features(original, min_games=2)
+    after = form_features(altered, min_games=2)
+    pd.testing.assert_frame_equal(before, after)
+
+
+def test_classwise_ece_returns_separate_values_for_three_outcomes():
+    p = np.full((6, 3), 1 / 3)
+    y = np.array([0, 0, 0, 0, 1, 2])
+    eces = classwise_ece(p, y)
+    assert len(eces) == 3
+    assert all(value > 0 for value in eces)
+    assert eces[0] > eces[1]

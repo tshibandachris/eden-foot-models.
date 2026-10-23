@@ -1,9 +1,10 @@
-name: Eden-foot v5.3 validation + calibration fix
+name: Eden-foot v5.3 temporal audit + calibration
 
 on:
   push:
     branches:
       - fix/v5-3-rigorous-evaluation
+      - audit/leakage-calibration-holdout
   pull_request:
     branches:
       - main
@@ -24,7 +25,7 @@ jobs:
         run: python -m pip install -r requirements.txt pytest
       - name: Compile v2-v5 modules and check calibration fix
         run: python -m py_compile eden_foot_v2.py eden_foot_v3.py eden_foot_v4.py eden_foot_v5.py
-      - name: Test no same-date leakage
+      - name: Test leakage invariance and outcome calibration
         run: python -m pytest -q tests/test_v5_3_protocol.py
       - name: Verify baseline remains unchanged
         shell: bash
@@ -38,11 +39,11 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -u eden_foot_v5.py --league E0 --test-seasons 3 --holdout-seasons 1 2>&1 | tee resultats-v5.3-E0.txt
+          python -u eden_foot_v5.py --league E0 --test-seasons 2 --holdout-seasons 2 2>&1 | tee resultats-v5.3-E0.txt
       - name: Publier le journal d'évaluation
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eden-foot-v5-3-E0-results
+          name: eden-foot-v5-3-E0-two-season-holdout-results
           path: resultats-v5.3-E0.txt
           if-no-files-found: warn
