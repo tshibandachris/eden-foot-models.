@@ -28,8 +28,8 @@ def test_same_date_elo_is_independent_of_row_order():
 def test_same_date_form_features_do_not_leak_same_day_results():
     a = _matches()
     b = _matches([1, 0, 2])
-    fa = form_features(a)
-    fb = form_features(b)
+    fa = form_features(a, min_games=2)
+    fb = form_features(b, min_games=2)
     # Initial features for the two same-date matches must be unavailable/equal,
     # regardless of which same-day result appears first in the CSV.
     assert fa.iloc[0].isna().all()
