@@ -74,7 +74,6 @@ def multiclass_ece(P, y, bins=10):
     return float(total)
 
 
-
 def classwise_ece(P, y, bins=10):
     """ECE one-vs-rest séparée pour domicile, nul et extérieur."""
     P = np.asarray(norm(P), dtype=float)
@@ -101,7 +100,7 @@ def print_reliability_table(name, P, y, bins=10):
     P = np.asarray(norm(P), dtype=float)
     y = np.asarray(y, dtype=int)
     edges = np.linspace(0.0, 1.0, bins + 1)
-    print(f"\\nCalibration par issue — {name} (probabilité moyenne / fréquence observée)")
+    print(f"\nCalibration par issue — {name} (probabilité moyenne / fréquence observée)")
     for k, outcome in enumerate(OUTCOMES):
         print(f"  {outcome}:")
         confidence = P[:, k]
