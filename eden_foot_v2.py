@@ -75,9 +75,18 @@ def load_data(league, seasons):
                     "as_": col(raw, ["AS"]),
                     "hst": col(raw, ["HST"]),
                     "ast": col(raw, ["AST"]),
+                    # Legacy market columns retained for v2-v4 compatibility.
                     "oh": col(raw, ["AvgH", "BbAvH", "B365H"]),
                     "od": col(raw, ["AvgD", "BbAvD", "B365D"]),
                     "oa": col(raw, ["AvgA", "BbAvA", "B365A"]),
+                    # Strict opening odds: no bookmaker fallback.
+                    "aoh": col(raw, ["AvgH"]),
+                    "aod": col(raw, ["AvgD"]),
+                    "aoa": col(raw, ["AvgA"]),
+                    # Strict closing odds: no source fallback.
+                    "och": col(raw, ["AvgCH"]),
+                    "ocd": col(raw, ["AvgCD"]),
+                    "oca": col(raw, ["AvgCA"]),
                 }
             )
         )
@@ -90,31 +99,45 @@ def load_data(league, seasons):
 # 2. Variables calculées AVANT chaque match (aucune fuite du futur)
 # --------------------------------------------------------------------------
 def run_elo(df, k=20.0, home_adv=60.0, init=1500.0, carry=0.75):
-    ratings = {}
-    diffs = []
-    last_season = None
-    for r in df.itertuples():
-        if last_season is not None and r.season != last_season and ratings:
-            mean = np.mean(list(ratings.values()))
-            ratings = {t: mean + carry * (v - mean) for t, v in ratings.items()}
-        last_season = r.season
-        rh, ra = ratings.get(r.home, init), ratings.get(r.away, init)
-        diff = rh + home_adv - ra
-        diffs.append(diff / 400.0)
-        exp_h = 1.0 / (1.0 + 10 ** (-diff / 400.0))
-        score = 1.0 if r.hg > r.ag else 0.5 if r.hg == r.ag else 0.0
-        gd = abs(r.hg - r.ag)
-        mult = 1.0 if gd <= 1 else 1.5 if gd == 2 else (11 + gd) / 8
-        delta = k * mult * (score - exp_h)
-        ratings[r.home], ratings[r.away] = rh + delta, ra - delta
-    return np.array(diffs)
+    """Elo pré-match sans fuite entre matchs ayant la même date.
 
+    Toutes les rencontres d'une date sont prédites à partir des classements
+    disponibles avant cette date. Les mises à jour Elo sont appliquées ensuite,
+    sans dépendre de l'ordre des lignes.
+    """
+    ratings = {}
+    diffs = np.full(len(df), np.nan, dtype=float)
+    last_season = None
+    work = df.reset_index(drop=True)
+    for _, indices in work.groupby("date", sort=True).groups.items():
+        idx = np.asarray(list(indices), dtype=int)
+        day = work.iloc[idx]
+        season = day["season"].iloc[0]
+        if last_season is not None and season != last_season and ratings:
+            mean = float(np.mean(list(ratings.values())))
+            ratings = {t: mean + carry * (v - mean) for t, v in ratings.items()}
+        last_season = season
+        updates = {}
+        for pos, r in zip(idx, day.itertuples()):
+            rh, ra = ratings.get(r.home, init), ratings.get(r.away, init)
+            diff = rh + home_adv - ra
+            diffs[pos] = diff / 400.0
+            exp_h = 1.0 / (1.0 + 10 ** (-diff / 400.0))
+            score = 1.0 if r.hg > r.ag else 0.5 if r.hg == r.ag else 0.0
+            gd = abs(r.hg - r.ag)
+            mult = 1.0 if gd <= 1 else 1.5 if gd == 2 else (11 + gd) / 8
+            delta = k * mult * (score - exp_h)
+            updates[r.home] = updates.get(r.home, 0.0) + delta
+            updates[r.away] = updates.get(r.away, 0.0) - delta
+        for team, delta in updates.items():
+            ratings[team] = ratings.get(team, init) + delta
+    return diffs
 
 FORM_STATS = ["pts", "gf", "ga", "sf", "sa", "sotf", "sota"]
 
 
 def form_features(df, window=5, min_games=3):
-    """Moyennes glissantes des `window` derniers matchs de chaque équipe (domicile + extérieur)."""
+    """Forme pré-match ; tous les matchs d'une même date voient le même historique."""
     hist = {}
 
     def summary(team):
@@ -125,20 +148,25 @@ def form_features(df, window=5, min_games=3):
             warnings.simplefilter("ignore")
             return list(np.nanmean(np.array(h[-window:], dtype=float), axis=0))
 
-    rows = []
-    for r in df.itertuples():
-        rows.append(summary(r.home) + summary(r.away))
-        ph = 3 if r.hg > r.ag else 1 if r.hg == r.ag else 0
-        pa = 3 if r.ag > r.hg else 1 if r.hg == r.ag else 0
-        hist.setdefault(r.home, []).append((ph, r.hg, r.ag, r.hs, r.as_, r.hst, r.ast))
-        hist.setdefault(r.away, []).append((pa, r.ag, r.hg, r.as_, r.hs, r.ast, r.hst))
-
+    rows = [None] * len(df)
+    work = df.reset_index(drop=True)
+    for _, indices in work.groupby("date", sort=True).groups.items():
+        idx = np.asarray(list(indices), dtype=int)
+        day = work.iloc[idx]
+        # Compute every feature before adding any result from this date.
+        for pos, r in zip(idx, day.itertuples()):
+            rows[pos] = summary(r.home) + summary(r.away)
+        # Add results after all same-date features have been calculated.
+        for r in day.itertuples():
+            ph = 3 if r.hg > r.ag else 1 if r.hg == r.ag else 0
+            pa = 3 if r.ag > r.hg else 1 if r.hg == r.ag else 0
+            hist.setdefault(r.home, []).append((ph, r.hg, r.ag, r.hs, r.as_, r.hst, r.ast))
+            hist.setdefault(r.away, []).append((pa, r.ag, r.hg, r.as_, r.hs, r.ast, r.hst))
     names = [f"h_{s}" for s in FORM_STATS] + [f"a_{s}" for s in FORM_STATS]
     X = pd.DataFrame(rows, columns=names, index=df.index)
     X["pts_diff"] = X["h_pts"] - X["a_pts"]
     X["gd_diff"] = (X["h_gf"] - X["h_ga"]) - (X["a_gf"] - X["a_ga"])
     return X
-
 
 # --------------------------------------------------------------------------
 # 3. Modèles
