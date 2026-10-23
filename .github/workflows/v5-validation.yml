@@ -1,0 +1,48 @@
+name: Eden-foot v5.3 validation
+
+on:
+  push:
+    branches:
+      - fix/v5-3-rigorous-evaluation
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest
+      - name: Compile current unsuffixed modules
+        run: python -m py_compile eden_foot_v2.py eden_foot_v3.py eden_foot_v4.py eden_foot_v5.py
+      - name: Test no same-date leakage
+        run: python -m pytest -q tests/test_v5_3_protocol.py
+      - name: Verify baseline remains unchanged
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD:eden_foot_baseline.py)"
+          expected="6aaf542da01ee095fd0a0525c1860d975c23a31e"
+          echo "Baseline Git blob SHA: $actual"
+          test "$actual" = "$expected"
+
+      - name: Execute walk-forward complet v5.3 sur E0
+        shell: bash
+        run: |
+          set -o pipefail
+          python -u eden_foot_v5.py --league E0 --test-seasons 3 --holdout-seasons 1 2>&1 | tee resultats-v5.3-E0.txt
+      - name: Publier le journal d'évaluation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eden-foot-v5-3-E0-results
+          path: resultats-v5.3-E0.txt
+          if-no-files-found: warn
