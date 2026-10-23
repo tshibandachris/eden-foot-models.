@@ -142,7 +142,8 @@ def write_snapshot(path: str | Path, fixtures: list[dict[str, Any]]) -> str:
     """Atomically replace a current-fixtures snapshot and return its SHA-256."""
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    content = "".join(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n" for row in fixtures)
+    ordered = sorted(fixtures, key=lambda row: (row["kickoff_utc"], row["league"], row["fixture_id"]))
+    content = "".join(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n" for row in ordered)
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
     temporary = destination.with_name(destination.name + ".tmp")
     temporary.write_text(content, encoding="utf-8", newline="\n")
@@ -153,7 +154,7 @@ def write_snapshot(path: str | Path, fixtures: list[dict[str, Any]]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=7, help="upcoming window in days (default: 7)")
-    parser.add_argument("--date-from", type=date.fromisoformat, default=date.today(), help="UTC calendar date YYYY-MM-DD")
+    parser.add_argument("--date-from", type=date.fromisoformat, default=datetime.now(timezone.utc).date(), help="UTC calendar date YYYY-MM-DD")
     parser.add_argument("--competitions", default=",".join(DEFAULT_COMPETITIONS), help="comma-separated provider competition codes")
     parser.add_argument("--output", default="data/upcoming_fixtures.jsonl", help="current fixture snapshot JSONL")
     args = parser.parse_args()
