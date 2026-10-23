@@ -1,4 +1,4 @@
-name: Eden-foot v5.3 validation
+name: Eden-foot v5.3 validation + calibration fix
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pytest
-      - name: Compile current unsuffixed modules
+      - name: Compile v2-v5 modules and check calibration fix
         run: python -m py_compile eden_foot_v2.py eden_foot_v3.py eden_foot_v4.py eden_foot_v5.py
       - name: Test no same-date leakage
         run: python -m pytest -q tests/test_v5_3_protocol.py

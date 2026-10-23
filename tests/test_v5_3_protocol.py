@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from eden_foot_v2 import form_features, run_elo
+from eden_foot_v5 import multiclass_ece, report
 
 
 def _matches(order=None):
@@ -39,3 +40,18 @@ def test_same_date_form_features_do_not_leak_same_day_results():
     # The next date sees both previous matches, so A's recent form is available.
     assert np.isfinite(fa.iloc[2]["h_pts"])
     assert np.isfinite(fb.iloc[2]["h_pts"])
+
+
+
+def test_uniform_probabilities_do_not_report_zero_multiclass_ece():
+    p = np.full((6, 3), 1 / 3)
+    y = np.array([0, 0, 0, 0, 1, 2])
+    assert multiclass_ece(p, y) > 0
+
+
+def test_uniform_probabilities_split_argmax_ties_fairly(capsys):
+    p = np.full((6, 3), 1 / 3)
+    y = np.array([0, 0, 0, 0, 1, 2])
+    report("Uniforme", p, y)
+    output = capsys.readouterr().out
+    assert "préc. 33.3%" in output
