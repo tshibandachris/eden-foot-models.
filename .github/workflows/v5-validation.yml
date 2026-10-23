@@ -33,9 +33,9 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pytest
       - name: Compile v2-v5 modules and check calibration fix
-        run: python -m py_compile eden_foot_v2.py eden_foot_v3.py eden_foot_v4.py eden_foot_v5.py eden_foot_prediction_ledger.py
+        run: python -m py_compile eden_foot_v2.py eden_foot_v3.py eden_foot_v4.py eden_foot_v5.py eden_foot_prediction_ledger.py eden_foot_fixtures.py
       - name: Test leakage invariance and outcome calibration
-        run: python -m pytest -q tests/test_v5_3_protocol.py tests/test_prospective_prediction_ledger.py
+        run: python -m pytest -q tests/test_v5_3_protocol.py tests/test_prospective_prediction_ledger.py tests/test_eden_foot_fixtures.py
       - name: Verify baseline remains unchanged
         shell: bash
         run: |
