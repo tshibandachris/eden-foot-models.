@@ -1,16 +1,25 @@
-name: Eden-foot v5.3 temporal audit + calibration
+name: Eden-foot v5.3 temporal audit + rolling evaluation snapshots
 
 on:
   push:
     branches:
+      - main
       - fix/v5-3-rigorous-evaluation
       - audit/leakage-calibration-holdout
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+  schedule:
+    # Weekly snapshot; scheduled workflows run from the default branch.
+    - cron: "0 6 * * 1"
 
 permissions:
   contents: read
+
+concurrency:
+  group: eden-foot-evaluation-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   protocol-checks:
@@ -35,15 +44,37 @@ jobs:
           echo "Baseline Git blob SHA: $actual"
           test "$actual" = "$expected"
 
-      - name: Execute walk-forward complet v5.3 sur E0
+      - name: Execute walk-forward evaluation on E0
         shell: bash
         run: |
           set -o pipefail
-          python -u eden_foot_v5.py --league E0 --test-seasons 2 --holdout-seasons 2 2>&1 | tee resultats-v5.3-E0.txt
-      - name: Publier le journal d'évaluation
+          {
+            echo "Eden-foot evaluation snapshot"
+            echo "UTC timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "Git commit: $(git rev-parse HEAD)"
+            echo "Trigger: ${{ github.event_name }}"
+            echo
+            python -u eden_foot_v5.py --league E0 --test-seasons 2 --holdout-seasons 2
+          } 2>&1 | tee resultats-v5.3-E0.txt
+      - name: Add snapshot metadata to workflow summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Eden-foot rolling evaluation snapshot"
+            echo "- UTC timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "- Commit: $(git rev-parse HEAD)"
+            echo "- Trigger: ${{ github.event_name }}"
+            echo "- Baseline file: protected by Git blob SHA check"
+            echo "- Full console log: attached as a workflow artifact"
+            echo
+            echo "Important: recurring snapshots are monitoring records, not proof of prospective superiority. Do not tune models against the reserved holdout; confirm any change on later unseen matches."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish rolling evaluation snapshot
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eden-foot-v5-3-E0-two-season-holdout-results
+          name: eden-foot-v5-3-E0-snapshot-run-${{ github.run_number }}
           path: resultats-v5.3-E0.txt
           if-no-files-found: warn
+          retention-days: 400
