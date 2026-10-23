@@ -204,7 +204,7 @@ def main() -> None:
     record.add_argument("--ledger", default="data/prospective_forecasts.jsonl")
     score = sub.add_parser("score", help="score eligible forecasts using verified result JSONL")
     score.add_argument("--ledger", default="data/prospective_forecasts.jsonl")
-    score.add_argument("--results", required=True, help="JSONL of verified final results")
+    score.add_argument("--results", required=True, help="JSONL of verified final results")\n    score.add_argument("--scores", default="data/prospective_scores.jsonl", help="append-only score output JSONL")
     args = parser.parse_args()
 
     if args.command == "record":
@@ -213,7 +213,7 @@ def main() -> None:
         row = record_forecast(args.ledger, forecast)
         print(f"Forecast recorded: {row['fixture_id']} | SHA-256 {row['forecast_sha256']}")
     else:
-        rows = score_forecasts(args.ledger, args.results)
+        rows = score_forecasts(args.ledger, args.results, scores_path=args.scores)
         print(f"Newly scored forecasts: {len(rows)}")
         if rows:
             print(f"Mean log-loss: {sum(x['log_loss'] for x in rows) / len(rows):.4f}")
