@@ -22,7 +22,7 @@ try:
     import sklearn
     from eden_foot_v2 import (
         DATA_DIR, WeightedPoisson, form_features, load_data, make_lgbm,
-        match_losses, norm, print_header, run_elo,
+        match_losses, norm, run_elo,
     )
     from eden_foot_v3 import ELO_DEFAULT, ELO_GRID, fit_weights, prob_feats
     from eden_foot_v4 import SEASONS_V4, DixonColes, report
@@ -41,6 +41,14 @@ OPEN_COLS = ["aoh", "aod", "aoa"]
 CLOSE_COLS = ["och", "ocd", "oca"]
 LEGACY_COLS = ["oh", "od", "oa"]
 OUTCOMES = ["domicile", "nul", "extérieur"]
+
+
+def print_header(title):
+    """Affiche un titre sans dépendre d’une fonction absente des modules v2-v4."""
+    line = "=" * max(12, len(title))
+    print(line)
+    print(title)
+    print(line)
 
 
 def protocol_hash():
