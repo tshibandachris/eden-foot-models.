@@ -34,7 +34,7 @@ jobs:
           echo "Baseline Git blob SHA: $actual"
           test "$actual" = "$expected"
 
-      - name: Execute walk-forward complet sur E0
+      - name: Execute walk-forward complet v5.3 sur E0
         shell: bash
         run: |
           set -o pipefail
