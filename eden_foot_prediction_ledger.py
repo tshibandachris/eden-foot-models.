@@ -204,7 +204,8 @@ def main() -> None:
     record.add_argument("--ledger", default="data/prospective_forecasts.jsonl")
     score = sub.add_parser("score", help="score eligible forecasts using verified result JSONL")
     score.add_argument("--ledger", default="data/prospective_forecasts.jsonl")
-    score.add_argument("--results", required=True, help="JSONL of verified final results")\n    score.add_argument("--scores", default="data/prospective_scores.jsonl", help="append-only score output JSONL")
+    score.add_argument("--results", required=True, help="JSONL of verified final results")
+    score.add_argument("--scores", default="data/prospective_scores.jsonl", help="append-only score output JSONL")
     args = parser.parse_args()
 
     if args.command == "record":
