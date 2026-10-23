@@ -14,7 +14,7 @@ Utilise eden_foot_v2-1.py et eden_foot_v3-1.py comme dépendances, sans modifier
 
 Usage :
     python eden_foot_v4-1.py
-    python eden_foot_v4.py --league D2 --half-life 500
+    python eden_foot_v4-1.py --league D2 --half-life 500
 """
 import argparse
 import importlib.util
