@@ -29,6 +29,7 @@ jobs:
       - name: Verify baseline remains unchanged
         shell: bash
         run: |
-          actual="$(sha256sum eden_foot_baseline.py | cut -d ' ' -f 1)"
-          echo "Baseline SHA-256: $actual"
-          test -n "$actual"
+          actual="$(git rev-parse HEAD:eden_foot_baseline.py)"
+          expected="6aaf542da01ee095fd0a0525c1860d975c23a31e"
+          echo "Baseline Git blob SHA: $actual"
+          test "$actual" = "$expected"
