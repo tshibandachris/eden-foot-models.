@@ -10,13 +10,32 @@ Nouveautés :
      appris uniquement sur les prédictions passées).
   4. Verdict statistique : la v4 bat-elle vraiment la v3 ? bat-elle le marché ?
 
-Garde eden_foot_v2.py, eden_foot_v3.py et eden_foot_v4.py dans le même dossier.
+Utilise eden_foot_v2-1.py et eden_foot_v3-1.py comme dépendances, sans modifier les anciens fichiers.
 
 Usage :
-    python eden_foot_v4.py
+    python eden_foot_v4-1.py
     python eden_foot_v4.py --league D2 --half-life 500
 """
 import argparse
+import importlib.util
+import sys
+from pathlib import Path
+
+# Les fichiers suffixés « -1 » ne sont pas importables par leur nom Python.
+# On les charge sous les noms de modules attendus par les versions dépendantes.
+def _load_versioned_module(module_name, filename):
+    path = Path(__file__).resolve().parent / filename
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Impossible de charger {filename}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_versioned_module("eden_foot_v2", "eden_foot_v2-1.py")
+_load_versioned_module("eden_foot_v3", "eden_foot_v3-1.py")
 
 import numpy as np
 from lightgbm import LGBMClassifier  # noqa: F401  (utilisé via make_lgbm)
