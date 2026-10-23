@@ -130,6 +130,7 @@ def score_forecasts(
     results_path: str | Path,
     *,
     now: datetime | None = None,
+    scores_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Append scores for completed fixtures to a separate results JSONL file.
 
@@ -156,7 +157,7 @@ def score_forecasts(
             raise ValueError(f"Conflicting outcomes for fixture {fixture_id}")
         result_by_fixture[fixture_id] = {"outcome": outcome, "observed_at_utc": observed}
 
-    out_path = Path(results_path)
+    out_path = Path(scores_path) if scores_path is not None else Path(str(results_path) + ".scores.jsonl")
     already_scored = {
         row.get("forecast_sha256") for row in _read_jsonl(out_path)
         if row.get("record_type") == "score"
