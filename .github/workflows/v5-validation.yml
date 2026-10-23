@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -u eden_foot_v5.py --league E0 --test-seasons 3 --holdout-seasons 2 2>&1 | tee resultats-v5.3-E0.txt
+          python -u eden_foot_v5.py --league E0 --test-seasons 2 --holdout-seasons 2 2>&1 | tee resultats-v5.3-E0.txt
       - name: Publier le journal d'évaluation
         if: always()
         uses: actions/upload-artifact@v4
