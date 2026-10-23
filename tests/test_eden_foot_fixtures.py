@@ -100,4 +100,4 @@ def test_snapshot_is_sorted_stable_and_hashed(tmp_path):
     path = tmp_path / "data" / "fixtures.jsonl"
     digest = fixtures.write_snapshot(path, rows)
     assert len(digest) == 64
-    assert [json.loads(line)["provider_fixture_id"] for line in path.read_text().splitlines()] == ["2", "1"]
+    assert [json.loads(line)["provider_fixture_id"] for line in path.read_text().splitlines()] == ["1", "2"]
