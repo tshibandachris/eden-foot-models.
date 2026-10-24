@@ -9,7 +9,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
+import unicodedata
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -45,6 +47,50 @@ def read_aliases(path: str | Path | None) -> dict[str, str]:
     ):
         raise ValueError("Team alias file must be a JSON object of non-empty string pairs")
     return {k.strip(): v.strip() for k, v in payload.items()}
+
+
+def normalized_team_name(name: str) -> str:
+    """Conservative normalization for clear suffix/punctuation differences only."""
+    value = unicodedata.normalize("NFKD", str(name))
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = value.casefold().replace("&", " and ")
+    tokens = re.findall(r"[a-z0-9]+", value)
+    # Remove common legal/club markers, not meaningful words such as "United" or "City".
+    markers = {"fc", "cf", "afc", "sc", "ac", "as", "ss", "us", "rc", "cd", "sd", "ca"}
+    while tokens and tokens[-1] in markers:
+        tokens.pop()
+    while tokens and tokens[0] in markers:
+        tokens.pop(0)
+    return " ".join(tokens)
+
+
+def resolve_team_name(provider_name: str, seen_names: set[str], aliases: dict[str, str]) -> str:
+    """Prefer explicit aliases; otherwise accept only a unique normalized exact match."""
+    requested = str(provider_name).strip()
+    if requested in aliases:
+        resolved = aliases[requested]
+        if resolved not in seen_names:
+            raise ValueError(
+                f"Configured alias for {requested!r} points to {resolved!r}, "
+                "which is absent from pre-kickoff training data."
+            )
+        return resolved
+    if requested in seen_names:
+        return requested
+    key = normalized_team_name(requested)
+    matches = sorted(name for name in seen_names if normalized_team_name(name) == key and key)
+    if len(matches) == 1:
+        print(f"Resolved team name conservatively: {requested!r} -> {matches[0]!r}")
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Ambiguous normalized team name {requested!r}: {matches}. "
+            "Add an explicit verified mapping in the aliases file."
+        )
+    raise ValueError(
+        f"Team name not present in pre-kickoff training data: {requested}. "
+        "No unique safe name match was found; add an explicit provider-to-historical mapping only if verified."
+    )
 
 
 def training_before_kickoff(history: pd.DataFrame, kickoff_utc: str) -> pd.DataFrame:
@@ -93,16 +139,9 @@ def predict_fixture(
 
     mapping = aliases or {}
     provider_home, provider_away = str(fixture["home"]).strip(), str(fixture["away"]).strip()
-    home = mapping.get(provider_home, provider_home)
-    away = mapping.get(provider_away, provider_away)
     seen = set(train["home"].astype(str)) | set(train["away"].astype(str))
-    unknown = [team for team in (home, away) if team not in seen]
-    if unknown:
-        raise ValueError(
-            "Team name not present in pre-kickoff training data: "
-            + ", ".join(unknown)
-            + ". Add an explicit provider-to-historical name mapping only if it is correct."
-        )
+    home = resolve_team_name(provider_home, seen, mapping)
+    away = resolve_team_name(provider_away, seen, mapping)
 
     model = WeightedPoisson().fit(train, pd.Timestamp(kickoff.date()))
     sample = pd.DataFrame([{"home": home, "away": away}])
