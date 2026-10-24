@@ -102,6 +102,8 @@ jobs:
             echo "No new forecast records to persist."
           fi
 
+      - name: Run historical nomenclature check
+        run: python check_history.py
       - name: Workflow summary
         if: always()
         run: |
@@ -114,3 +116,5 @@ jobs:
             echo "- Ledger: append-only; duplicate fixture/model/version records are rejected."
             echo "- Scientific status: no superiority over market odds is claimed."
           } >> "$GITHUB_STEP_SUMMARY"
+
+          
