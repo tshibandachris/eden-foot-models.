@@ -58,6 +58,33 @@ jobs:
             echo "Fixture snapshot unchanged."
           fi
 
+      - name: Inspect Bundesliga team names
+        run: |
+          python - <<'PY'
+          import glob
+          import pandas as pd
+
+          for path in sorted(glob.glob("**/D1.csv", recursive=True)):
+              try:
+                  df = pd.read_csv(path, encoding="utf-8-sig")
+                  columns = [c for c in ("HomeTeam", "AwayTeam") if c in df.columns]
+
+                  print(f"\n--- {path} ---")
+                  if not columns:
+                      print("Colonnes HomeTeam/AwayTeam absentes")
+                      print("Colonnes disponibles :", df.columns.tolist())
+                      continue
+
+                  for col in columns:
+                      names = sorted(df[col].dropna().astype(str).unique())
+                      print(f"{col}:")
+                      for name in names:
+                          if "mainz" in name.lower():
+                              print(f"  {name}")
+              except Exception as exc:
+                  print(f"Erreur de lecture {path}: {exc}")
+          PY
+
       - name: Generate and record prospective forecasts
         run: |
           python eden_foot_prospective_predictor.py \
