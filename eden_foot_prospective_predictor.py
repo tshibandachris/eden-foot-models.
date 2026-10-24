@@ -204,17 +204,29 @@ def main() -> int:
         aliases = read_aliases(args.aliases) if Path(args.aliases).exists() else {}
         code_sha = current_code_hash()
         recorded = 0
+        skipped = 0
         # Load each historical league once; all fixture forecasts remain individually immutable.
+        # A team without a verified historical identity invalidates that fixture only, not
+        # unrelated fixtures. Never invent an alias or substitute another club's history.
         for provider_league in sorted({str(row.get("league", "")) for row in fixtures}):
             if provider_league not in COMPETITION_TO_LEAGUE:
                 raise ValueError(f"Unsupported provider competition code: {provider_league!r}")
             league = COMPETITION_TO_LEAGUE[provider_league]
             history = load_data(league, args.seasons)
             for fixture in (r for r in fixtures if r.get("league") == provider_league):
-                forecast = predict_fixture(
-                    fixture, history, aliases=aliases, code_sha=code_sha,
-                    minimum_training_matches=args.minimum_training_matches,
-                )
+                try:
+                    forecast = predict_fixture(
+                        fixture, history, aliases=aliases, code_sha=code_sha,
+                        minimum_training_matches=args.minimum_training_matches,
+                    )
+                except (ValueError, RuntimeError, KeyError, TypeError) as exc:
+                    skipped += 1
+                    print(
+                        f"Skipping fixture safely {fixture.get('fixture_id', '<unknown>')}: {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
+                # Ledger integrity failures (e.g. duplicate immutable keys) remain fatal.
                 row = record_forecast(args.ledger, forecast)
                 recorded += 1
                 p = row["probabilities"]
@@ -223,7 +235,11 @@ def main() -> int:
                     f"A {p['away']:.3f} | sha256 {row['forecast_sha256']}"
                 )
         print(f"Recorded {recorded} prospective candidate forecast(s) in {args.ledger}")
+        print(f"Safely skipped {skipped} fixture(s) lacking valid pre-kickoff training data or identity.")
         print("Status: experimental candidate; not yet prospectively validated against the market.")
+        if recorded == 0 and skipped:
+            print("No forecasts were recorded because every fixture was skipped safely.", file=sys.stderr)
+            return 1
         return 0
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         print(f"Prospective prediction failed safely: {exc}", file=sys.stderr)
