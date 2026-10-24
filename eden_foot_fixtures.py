@@ -57,15 +57,19 @@ def normalize_match(match: dict[str, Any], *, now: datetime | None = None) -> di
     required = {
         "provider fixture id": match_id,
         "competition code": competition.get("code"),
+        "home team id": home.get("id"),
         "home team name": home.get("name"),
+        "away team id": away.get("id"),
         "away team name": away.get("name"),
     }
     missing = [label for label, value in required.items() if value in (None, "")]
     if missing:
         raise ValueError("Fixture missing required provider fields: " + ", ".join(missing))
 
+    # Keep the legacy home/away strings for existing consumers while preserving
+    # football-data.org's canonical team identities for auditable matching.
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "provider": "football-data.org",
         "fixture_id": f"football-data.org:{match_id}",
         "provider_fixture_id": str(match_id),
@@ -73,6 +77,18 @@ def normalize_match(match: dict[str, Any], *, now: datetime | None = None) -> di
         "competition": str(competition.get("name") or competition["code"]),
         "home": str(home["name"]).strip(),
         "away": str(away["name"]).strip(),
+        "home_team": {
+            "provider_team_id": str(home["id"]),
+            "name": str(home["name"]).strip(),
+            "short_name": str(home.get("shortName") or "").strip() or None,
+            "tla": str(home.get("tla") or "").strip() or None,
+        },
+        "away_team": {
+            "provider_team_id": str(away["id"]),
+            "name": str(away["name"]).strip(),
+            "short_name": str(away.get("shortName") or "").strip() or None,
+            "tla": str(away.get("tla") or "").strip() or None,
+        },
         "kickoff_utc": kickoff.isoformat().replace("+00:00", "Z"),
         "status_at_ingestion": status,
         "ingested_at_utc": clock.isoformat().replace("+00:00", "Z"),

@@ -16,8 +16,8 @@ def match(**overrides):
         "status": "TIMED",
         "utcDate": "2026-10-25T15:00:00Z",
         "competition": {"code": "PL", "name": "Premier League"},
-        "homeTeam": {"name": "Home FC"},
-        "awayTeam": {"name": "Away FC"},
+        "homeTeam": {"id": 57, "name": "Home FC", "shortName": "Home", "tla": "HOM"},
+        "awayTeam": {"id": 58, "name": "Away FC", "shortName": "Away", "tla": "AWY"},
     }
     row.update(overrides)
     return row
@@ -27,7 +27,16 @@ def test_normalizes_provider_id_names_and_utc():
     row = fixtures.normalize_match(match(), now=NOW)
     assert row["fixture_id"] == "football-data.org:12345"
     assert row["league"] == "PL"
-    assert row["home"] == "Home FC"
+    assert row["home"] == "Home FC"  # Backward-compatible display field.
+    assert row["schema_version"] == 2
+    assert row["home_team"] == {
+        "provider_team_id": "57",
+        "name": "Home FC",
+        "short_name": "Home",
+        "tla": "HOM",
+    }
+    assert row["away_team"]["provider_team_id"] == "58"
+    assert row["away_team"]["tla"] == "AWY"
     assert row["kickoff_utc"] == "2026-10-25T15:00:00Z"
 
 
@@ -49,6 +58,11 @@ def test_rejects_timezone_naive_kickoff():
 def test_rejects_missing_stable_provider_id():
     with pytest.raises(ValueError, match="provider fixture id"):
         fixtures.normalize_match(match(id=None), now=NOW)
+
+
+def test_rejects_missing_team_provider_identity():
+    with pytest.raises(ValueError, match="home team id"):
+        fixtures.normalize_match(match(homeTeam={"name": "Home FC"}), now=NOW)
 
 
 def test_fetch_uses_auth_header_and_bounded_competitions(monkeypatch):
