@@ -53,9 +53,9 @@ def test_unique_normalized_team_name_is_resolved():
 
 
 def test_ambiguous_normalized_team_name_fails_safely():
-    seen = {"Arsenal", "Arsenal FC"}
+    seen = {"Arsenal", "ARSENAL"}
     with pytest.raises(ValueError, match="Ambiguous normalized team name"):
-        predictor.resolve_team_name("Arsenal", seen, {})
+        predictor.resolve_team_name("Arsenal FC", seen, {})
 
 
 def test_explicit_alias_must_point_to_seen_team():
