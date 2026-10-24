@@ -1,0 +1,111 @@
+name: Eden-foot daily prospective forecasts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eden-foot-prospective-ledger
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Require football-data.org API token
+        env:
+          FOOTBALL_DATA_API_TOKEN: ${{ secrets.FOOTBALL_DATA_API_TOKEN }}
+        run: |
+          if [ -z "$FOOTBALL_DATA_API_TOKEN" ]; then
+            echo "::error::Add FOOTBALL_DATA_API_TOKEN in GitHub repository Settings > Secrets and variables > Actions > New repository secret."
+            exit 1
+          fi
+
+      - name: Fetch upcoming fixtures
+        env:
+          FOOTBALL_DATA_API_TOKEN: ${{ secrets.FOOTBALL_DATA_API_TOKEN }}
+        run: python eden_foot_fixtures.py --days 7 --competitions PL,PD,SA,BL1,FL1 --output data/upcoming_fixtures.jsonl
+
+      - name: Persist immutable fixture snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/upcoming_fixtures.jsonl
+          if ! git diff --cached --quiet; then
+            git commit -m "data: refresh upcoming fixture snapshot"
+            git push origin HEAD:main
+          else
+            echo "Fixture snapshot unchanged."
+          fi
+
+      - name: Check team aliases
+        id: aliases
+        run: |
+          if python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("data/team_aliases.json")
+          try:
+              value = json.loads(p.read_text(encoding="utf-8"))
+          except (OSError, json.JSONDecodeError):
+              raise SystemExit(1)
+          raise SystemExit(0 if isinstance(value, dict) and bool(value) else 1)
+          PY
+          then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Fixture ingestion succeeded, but forecasts are skipped because data/team_aliases.json is empty or invalid. Add verified provider-name to historical-name mappings, then rerun this workflow."
+          fi
+
+      - name: Generate and record prospective forecasts
+        if: steps.aliases.outputs.configured == 'true'
+        run: |
+          python eden_foot_prospective_predictor.py \
+            --fixtures data/upcoming_fixtures.jsonl \
+            --aliases data/team_aliases.json \
+            --ledger data/prospective_forecasts.jsonl
+
+      - name: Persist append-only forecast ledger
+        if: steps.aliases.outputs.configured == 'true'
+        run: |
+          git add data/prospective_forecasts.jsonl
+          if ! git diff --cached --quiet; then
+            git commit -m "data: append prospective forecasts"
+            git push origin HEAD:main
+          else
+            echo "No new forecast records to persist."
+          fi
+
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Eden-foot prospective pipeline"
+            echo "- UTC run time: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "- Fixture ingestion: attempted; inspect prior step for result."
+            echo "- Forecast model: experimental weighted Poisson candidate."
+            echo "- No forecasts are generated when verified team aliases are missing."
+            echo "- Ledger: append-only; duplicate fixture/model/version records are rejected."
+            echo "- Scientific status: no superiority over market odds is claimed."
+          } >> "$GITHUB_STEP_SUMMARY"
