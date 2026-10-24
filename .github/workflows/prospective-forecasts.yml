@@ -58,28 +58,7 @@ jobs:
             echo "Fixture snapshot unchanged."
           fi
 
-      - name: Check team aliases
-        id: aliases
-        run: |
-          if python - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path("data/team_aliases.json")
-          try:
-              value = json.loads(p.read_text(encoding="utf-8"))
-          except (OSError, json.JSONDecodeError):
-              raise SystemExit(1)
-          raise SystemExit(0 if isinstance(value, dict) and bool(value) else 1)
-          PY
-          then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Fixture ingestion succeeded, but forecasts are skipped because data/team_aliases.json is empty or invalid. Add verified provider-name to historical-name mappings, then rerun this workflow."
-          fi
-
       - name: Generate and record prospective forecasts
-        if: steps.aliases.outputs.configured == 'true'
         run: |
           python eden_foot_prospective_predictor.py \
             --fixtures data/upcoming_fixtures.jsonl \
@@ -87,7 +66,6 @@ jobs:
             --ledger data/prospective_forecasts.jsonl
 
       - name: Persist append-only forecast ledger
-        if: steps.aliases.outputs.configured == 'true'
         run: |
           git add data/prospective_forecasts.jsonl
           if ! git diff --cached --quiet; then
@@ -105,7 +83,7 @@ jobs:
             echo "- UTC run time: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             echo "- Fixture ingestion: attempted; inspect prior step for result."
             echo "- Forecast model: experimental weighted Poisson candidate."
-            echo "- No forecasts are generated when verified team aliases are missing."
+            echo "- Team names use explicit aliases first, then unique conservative normalization; ambiguous/unknown names fail safely."
             echo "- Ledger: append-only; duplicate fixture/model/version records are rejected."
             echo "- Scientific status: no superiority over market odds is claimed."
           } >> "$GITHUB_STEP_SUMMARY"
