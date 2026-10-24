@@ -73,7 +73,7 @@ def test_main_skips_unknown_fixture_and_keeps_valid_forecast(monkeypatch, tmp_pa
         {**FIXTURE, "fixture_id": "valid-fixture"},
         {**FIXTURE, "fixture_id": "unknown-fixture", "home": "SV 07 Elversberg"},
     ]
-    fixtures_path.write_text("\\n".join(json.dumps(row) for row in fixtures) + "\\n", encoding="utf-8")
+    fixtures_path.write_text("\n".join(json.dumps(row) for row in fixtures) + "\n", encoding="utf-8")
     aliases_path.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(sys, "argv", [
         "eden_foot_prospective_predictor.py",
@@ -111,7 +111,7 @@ def test_main_fails_if_every_fixture_is_skipped(monkeypatch, tmp_path, capsys):
 
     fixtures_path = tmp_path / "fixtures.jsonl"
     aliases_path = tmp_path / "aliases.json"
-    fixtures_path.write_text(json.dumps({**FIXTURE, "home": "SV 07 Elversberg"}) + "\\n", encoding="utf-8")
+    fixtures_path.write_text(json.dumps({**FIXTURE, "home": "SV 07 Elversberg"}) + "\n", encoding="utf-8")
     aliases_path.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(sys, "argv", [
         "eden_foot_prospective_predictor.py",
