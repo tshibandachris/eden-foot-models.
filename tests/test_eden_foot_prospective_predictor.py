@@ -61,3 +61,72 @@ def test_ambiguous_normalized_team_name_fails_safely():
 def test_explicit_alias_must_point_to_seen_team():
     with pytest.raises(ValueError, match="absent from pre-kickoff training data"):
         predictor.resolve_team_name("Arsenal FC", {"Chelsea"}, {"Arsenal FC": "Arsenal"})
+
+def test_main_skips_unknown_fixture_and_keeps_valid_forecast(monkeypatch, tmp_path, capsys):
+    import json
+    import sys
+
+    fixtures_path = tmp_path / "fixtures.jsonl"
+    aliases_path = tmp_path / "aliases.json"
+    ledger_path = tmp_path / "ledger.jsonl"
+    fixtures = [
+        {**FIXTURE, "fixture_id": "valid-fixture"},
+        {**FIXTURE, "fixture_id": "unknown-fixture", "home": "SV 07 Elversberg"},
+    ]
+    fixtures_path.write_text("\\n".join(json.dumps(row) for row in fixtures) + "\\n", encoding="utf-8")
+    aliases_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "eden_foot_prospective_predictor.py",
+        "--fixtures", str(fixtures_path),
+        "--aliases", str(aliases_path),
+        "--ledger", str(ledger_path),
+    ])
+    monkeypatch.setattr(predictor, "load_data", lambda league, seasons: history())
+
+    def fake_predict(fixture, history_df, **kwargs):
+        if fixture["fixture_id"] == "unknown-fixture":
+            raise ValueError("Team name not present in pre-kickoff training data: SV 07 Elversberg")
+        return {
+            "fixture_id": fixture["fixture_id"],
+            "probabilities": {"home": 0.51, "draw": 0.27, "away": 0.22},
+        }
+
+    monkeypatch.setattr(predictor, "predict_fixture", fake_predict)
+    monkeypatch.setattr(predictor, "current_code_hash", lambda: "a" * 64)
+    monkeypatch.setattr(
+        predictor, "record_forecast",
+        lambda path, row: {**row, "forecast_sha256": "b" * 64},
+    )
+
+    assert predictor.main() == 0
+    captured = capsys.readouterr()
+    assert "Skipping fixture safely unknown-fixture" in captured.err
+    assert "Recorded 1 prospective candidate forecast(s)" in captured.out
+    assert "Safely skipped 1 fixture(s)" in captured.out
+
+
+def test_main_fails_if_every_fixture_is_skipped(monkeypatch, tmp_path, capsys):
+    import json
+    import sys
+
+    fixtures_path = tmp_path / "fixtures.jsonl"
+    aliases_path = tmp_path / "aliases.json"
+    fixtures_path.write_text(json.dumps({**FIXTURE, "home": "SV 07 Elversberg"}) + "\\n", encoding="utf-8")
+    aliases_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "eden_foot_prospective_predictor.py",
+        "--fixtures", str(fixtures_path),
+        "--aliases", str(aliases_path),
+        "--ledger", str(tmp_path / "ledger.jsonl"),
+    ])
+    monkeypatch.setattr(predictor, "load_data", lambda league, seasons: history())
+    monkeypatch.setattr(predictor, "current_code_hash", lambda: "a" * 64)
+    monkeypatch.setattr(
+        predictor, "predict_fixture",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("Team name not present in pre-kickoff training data: SV 07 Elversberg")),
+    )
+
+    assert predictor.main() == 1
+    captured = capsys.readouterr()
+    assert "No forecasts were recorded because every fixture was skipped safely." in captured.err
+
