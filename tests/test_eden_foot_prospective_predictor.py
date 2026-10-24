@@ -45,3 +45,19 @@ def test_insufficient_history_is_rejected():
 def test_kickoff_must_be_future():
     with pytest.raises(ValueError, match="must be in the future"):
         predictor.predict_fixture({**FIXTURE,"kickoff_utc":"2026-10-24T11:00:00Z"}, history(), issued_at=NOW, code_sha="a"*64, minimum_training_matches=80)
+
+def test_unique_normalized_team_name_is_resolved():
+    seen = {"Arsenal", "Chelsea"}
+    assert predictor.resolve_team_name("Arsenal FC", seen, {}) == "Arsenal"
+    assert predictor.resolve_team_name("Chelsea", seen, {}) == "Chelsea"
+
+
+def test_ambiguous_normalized_team_name_fails_safely():
+    seen = {"Arsenal", "Arsenal FC"}
+    with pytest.raises(ValueError, match="Ambiguous normalized team name"):
+        predictor.resolve_team_name("Arsenal", seen, {})
+
+
+def test_explicit_alias_must_point_to_seen_team():
+    with pytest.raises(ValueError, match="absent from pre-kickoff training data"):
+        predictor.resolve_team_name("Arsenal FC", {"Chelsea"}, {"Arsenal FC": "Arsenal"})
