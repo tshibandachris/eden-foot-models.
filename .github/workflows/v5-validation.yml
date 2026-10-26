@@ -6,6 +6,7 @@ on:
       - main
       - fix/v5-3-rigorous-evaluation
       - audit/leakage-calibration-holdout
+      - feature/schema-integrity-gate
   pull_request:
     branches:
       - main
@@ -36,6 +37,11 @@ jobs:
         run: python -m py_compile eden_foot_v2.py eden_foot_v3.py eden_foot_v4.py eden_foot_v5.py eden_foot_prediction_ledger.py eden_foot_fixtures.py eden_foot_prospective_predictor.py
       - name: Test leakage invariance, ledger, fixture ingestion, and prospective predictor
         run: python -m pytest -q tests/test_v5_3_protocol.py tests/test_prospective_prediction_ledger.py tests/test_eden_foot_fixtures.py tests/test_eden_foot_prospective_predictor.py
+      - name: Test data schema auditor and drift detection
+        run: python -m pytest -q tests/test_schema_drift.py
+      - name: Audit data schemas against approved baseline (non-blocking until baseline approval)
+        continue-on-error: true
+        run: python archive_data_schemas.py --check
       - name: Verify baseline remains unchanged
         shell: bash
         run: |
