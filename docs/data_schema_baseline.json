@@ -1,0 +1,43 @@
+{
+  "schemas": {
+    "prospective_forecasts.jsonl": {
+      "columns_or_keys": {
+        "away": "string",
+        "code_sha": "string",
+        "data_sha": "string",
+        "fixture_id": "string",
+        "forecast_sha256": "string",
+        "home": "string",
+        "issued_at_utc": "string",
+        "kickoff_utc": "string",
+        "league": "string",
+        "model_name": "string",
+        "model_version": "string",
+        "probabilities": "dict",
+        "schema_version": "integer"
+      },
+      "format": "jsonl",
+      "structural_fingerprint_sha256": "0cff844ab7b0e99a7a869b29a2ca9e96591f14d413cd80be156ea7097bed90c6"
+    },
+    "upcoming_fixtures.jsonl": {
+      "columns_or_keys": {
+        "away": "string",
+        "away_team": "dict",
+        "competition": "string",
+        "fixture_id": "string",
+        "home": "string",
+        "home_team": "dict",
+        "ingested_at_utc": "string",
+        "kickoff_utc": "string",
+        "league": "string",
+        "provider": "string",
+        "provider_fixture_id": "string",
+        "schema_version": "integer",
+        "status_at_ingestion": "string"
+      },
+      "format": "jsonl",
+      "structural_fingerprint_sha256": "add4b42db4ba611c406cc0378783bbaf104fbc956cb7d9b2d3c7c9786bd1e962"
+    }
+  },
+  "version": 1
+}
