@@ -65,8 +65,42 @@ def json_value_type(value: Any) -> str:
     return type(value).__name__
 
 
-def observed_jsonl_types(path: Path) -> dict[str, str]:
+def summarize_types(types_by_path: dict[str, set[str]]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for key in sorted(types_by_path):
+        observed = types_by_path[key]
+        non_null = observed - {"null"}
+        if not non_null:
+            result[key] = "null"
+        elif len(non_null) == 1:
+            result[key] = next(iter(non_null))
+        else:
+            result[key] = "mixed"
+    return result
+
+
+def observed_jsonl_schema(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """Return top-level key types and recursively observed object-field types.
+
+    Top-level keys remain in columns_or_keys for compatibility. Nested fields use
+    dotted paths (and [] for list elements), e.g. probabilities.home or teams[].id.
+    """
     types_by_key: dict[str, set[str]] = {}
+    nested_types: dict[str, set[str]] = {}
+
+    def collect_nested(value: Any, prefix: str) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                child_path = f"{prefix}.{key}" if prefix else str(key)
+                nested_types.setdefault(child_path, set()).add(json_value_type(child))
+                collect_nested(child, child_path)
+        elif isinstance(value, list):
+            item_path = f"{prefix}[]" if prefix else "[]"
+            nested_types.setdefault(item_path, set()).add("list_item")
+            for child in value:
+                nested_types[item_path].add(json_value_type(child))
+                collect_nested(child, item_path)
+
     try:
         with path.open("r", encoding="utf-8") as stream:
             for line_number, line in enumerate(stream, start=1):
@@ -84,20 +118,12 @@ def observed_jsonl_types(path: Path) -> dict[str, str]:
                     )
                 for key, value in record.items():
                     types_by_key.setdefault(str(key), set()).add(json_value_type(value))
+                    if isinstance(value, (dict, list)):
+                        collect_nested(value, str(key))
     except OSError as exc:
         raise SchemaAuditError(f"Lecture impossible de {path}: {exc}") from exc
 
-    result: dict[str, str] = {}
-    for key in sorted(types_by_key):
-        observed = types_by_key[key]
-        non_null = observed - {"null"}
-        if not non_null:
-            result[key] = "null"
-        elif len(non_null) == 1:
-            result[key] = next(iter(non_null))
-        else:
-            result[key] = "mixed"
-    return result
+    return summarize_types(types_by_key), summarize_types(nested_types)
 
 
 def schema_for(path: Path) -> dict[str, Any]:
@@ -116,17 +142,20 @@ def schema_for(path: Path) -> dict[str, Any]:
         columns = {str(name): normalize_pandas_dtype(dtype) for name, dtype in frame.dtypes.items()}
         fmt = "csv"
     elif suffix == ".jsonl":
-        columns = observed_jsonl_types(path)
+        columns, nested_paths = observed_jsonl_schema(path)
         if not columns:
             raise SchemaAuditError(f"{path}: JSONL vide ou sans clés observées.")
         fmt = "jsonl"
     else:
         raise SchemaAuditError(f"Format non pris en charge: {path}")
     structure = {"format": fmt, "columns_or_keys": columns}
-    return {
+    result = {
         **structure,
         "structural_fingerprint_sha256": fingerprint(structure),
     }
+    if fmt == "jsonl":
+        result["nested_paths"] = nested_paths
+    return result
 
 
 def scan_catalog(data_dir: Path) -> dict[str, dict[str, Any]]:
@@ -180,6 +209,15 @@ def validate_baseline(value: Any, baseline_path: Path) -> dict[str, dict[str, An
         expected = spec.get("structural_fingerprint_sha256")
         if not isinstance(expected, str) or len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
             raise SchemaAuditError(f"{baseline_path}: empreinte SHA-256 invalide pour {relative!r}.")
+        nested_paths = spec.get("nested_paths")
+        if nested_paths is not None:
+            if spec["format"] != "jsonl" or not isinstance(nested_paths, dict):
+                raise SchemaAuditError(f"{baseline_path}: 'nested_paths' invalide pour {relative!r}.")
+            if not all(
+                isinstance(k, str) and k and isinstance(v, str) and v
+                for k, v in nested_paths.items()
+            ):
+                raise SchemaAuditError(f"{baseline_path}: chemins/types imbriqués invalides pour {relative!r}.")
         structure = {"format": spec["format"], "columns_or_keys": columns}
         if fingerprint(structure) != expected:
             raise SchemaAuditError(f"{baseline_path}: empreinte incohérente pour {relative!r}.")
@@ -218,6 +256,17 @@ def compare_catalog(
         for key in sorted(old_columns.keys() & new_columns.keys()):
             if old_columns[key] != new_columns[key]:
                 issues.append(f"{path}: type de {key}: {old_columns[key]} -> {new_columns[key]}")
+        # Older version-1 baselines without nested_paths remain readable, but once
+        # nested paths are approved they are enforced as part of the schema contract.
+        if "nested_paths" in old and "nested_paths" in new:
+            old_nested, new_nested = old["nested_paths"], new["nested_paths"]
+            for key in sorted(old_nested.keys() - new_nested.keys()):
+                issues.append(f"{path}: chemin imbriqué approuvé manquant: {key}")
+            for key in sorted(new_nested.keys() - old_nested.keys()):
+                issues.append(f"{path}: nouveau chemin imbriqué non approuvé: {key}")
+            for key in sorted(old_nested.keys() & new_nested.keys()):
+                if old_nested[key] != new_nested[key]:
+                    issues.append(f"{path}: type imbriqué de {key}: {old_nested[key]} -> {new_nested[key]}")
         if old["structural_fingerprint_sha256"] != new["structural_fingerprint_sha256"] and not any(
             issue.startswith(f"{path}:") or issue.endswith(f": {path}") for issue in issues
         ):
