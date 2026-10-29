@@ -17,7 +17,12 @@
         "schema_version": "integer"
       },
       "format": "jsonl",
-      "structural_fingerprint_sha256": "0cff844ab7b0e99a7a869b29a2ca9e96591f14d413cd80be156ea7097bed90c6"
+      "structural_fingerprint_sha256": "0cff844ab7b0e99a7a869b29a2ca9e96591f14d413cd80be156ea7097bed90c6",
+      "nested_paths": {
+        "probabilities.away": "float",
+        "probabilities.draw": "float",
+        "probabilities.home": "float"
+      }
     },
     "upcoming_fixtures.jsonl": {
       "columns_or_keys": {
@@ -36,7 +41,17 @@
         "status_at_ingestion": "string"
       },
       "format": "jsonl",
-      "structural_fingerprint_sha256": "add4b42db4ba611c406cc0378783bbaf104fbc956cb7d9b2d3c7c9786bd1e962"
+      "structural_fingerprint_sha256": "add4b42db4ba611c406cc0378783bbaf104fbc956cb7d9b2d3c7c9786bd1e962",
+      "nested_paths": {
+        "away_team.name": "string",
+        "away_team.provider_team_id": "string",
+        "away_team.short_name": "string",
+        "away_team.tla": "string",
+        "home_team.name": "string",
+        "home_team.provider_team_id": "string",
+        "home_team.short_name": "string",
+        "home_team.tla": "string"
+      }
     }
   },
   "version": 1
