@@ -130,3 +130,92 @@ def test_main_fails_if_every_fixture_is_skipped(monkeypatch, tmp_path, capsys):
     captured = capsys.readouterr()
     assert "No forecasts were recorded because every fixture was skipped safely." in captured.err
 
+
+
+def _run_main_with_forecast(monkeypatch, tmp_path, *, probabilities, data_sha="d" * 64, issued_at="2026-10-24T12:00:00Z", code_sha="a" * 64):
+    import json
+    import sys
+
+    fixtures_path = tmp_path / "fixtures-idempotency.jsonl"
+    aliases_path = tmp_path / "aliases-idempotency.json"
+    ledger_path = tmp_path / "ledger-idempotency.jsonl"
+    fixtures_path.write_text(json.dumps(FIXTURE) + "\n", encoding="utf-8")
+    aliases_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "eden_foot_prospective_predictor.py",
+        "--fixtures", str(fixtures_path),
+        "--aliases", str(aliases_path),
+        "--ledger", str(ledger_path),
+    ])
+    monkeypatch.setattr(predictor, "load_data", lambda league, seasons: history())
+    monkeypatch.setattr(predictor, "current_code_hash", lambda: code_sha)
+
+    def fake_predict(fixture, history_df, **kwargs):
+        return {
+            "fixture_id": fixture["fixture_id"],
+            "league": "E0",
+            "home": fixture["home"],
+            "away": fixture["away"],
+            "kickoff_utc": fixture["kickoff_utc"],
+            "issued_at_utc": issued_at,
+            "model_name": predictor.MODEL_NAME,
+            "model_version": predictor.MODEL_VERSION,
+            "code_sha": kwargs["code_sha"],
+            "data_sha": data_sha,
+            "probabilities": probabilities,
+        }
+
+    monkeypatch.setattr(predictor, "predict_fixture", fake_predict)
+    return predictor.main(), ledger_path
+
+
+def test_main_skips_identical_existing_forecast_without_appending(monkeypatch, tmp_path, capsys):
+    probabilities = {"home": 0.51, "draw": 0.27, "away": 0.22}
+    first_status, ledger_path = _run_main_with_forecast(
+        monkeypatch, tmp_path, probabilities=probabilities,
+    )
+    assert first_status == 0
+    original_lines = ledger_path.read_text(encoding="utf-8").splitlines()
+    assert len(original_lines) == 1
+
+    # Issuance time and source-code hash are provenance metadata, not forecast values.
+    second_status, same_ledger = _run_main_with_forecast(
+        monkeypatch, tmp_path, probabilities=probabilities,
+        issued_at="2026-10-24T12:05:00Z", code_sha="b" * 64,
+    )
+    assert second_status == 0
+    assert same_ledger.read_text(encoding="utf-8").splitlines() == original_lines
+    captured = capsys.readouterr()
+    assert "Forecast already recorded; skipped safely" in captured.out
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"probabilities": {"home": 0.52, "draw": 0.26, "away": 0.22}},
+        {"data_sha": "e" * 64},
+    ],
+)
+def test_main_fails_on_existing_key_with_changed_forecast_and_preserves_ledger(
+    monkeypatch, tmp_path, capsys, changed
+):
+    original_probabilities = {"home": 0.51, "draw": 0.27, "away": 0.22}
+    first_status, ledger_path = _run_main_with_forecast(
+        monkeypatch, tmp_path, probabilities=original_probabilities,
+    )
+    assert first_status == 0
+    original_lines = ledger_path.read_text(encoding="utf-8").splitlines()
+
+    second_arguments = {
+        "probabilities": original_probabilities,
+        "data_sha": "d" * 64,
+    }
+    second_arguments.update(changed)
+    second_status, same_ledger = _run_main_with_forecast(
+        monkeypatch, tmp_path, **second_arguments,
+    )
+    assert second_status == 1
+    assert same_ledger.read_text(encoding="utf-8").splitlines() == original_lines
+    captured = capsys.readouterr()
+    assert "CRITICAL FORECAST CONFLICT" in captured.err
+    assert "no overwrite was attempted" in captured.err

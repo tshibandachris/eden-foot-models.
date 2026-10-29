@@ -171,6 +171,88 @@ def predict_fixture(
     }
 
 
+class ForecastConflictError(ValueError):
+    """An immutable forecast key already exists with different forecast content."""
+
+
+FORECAST_IDENTITY_FIELDS = (
+    "fixture_id", "model_name", "model_version",
+)
+FORECAST_COMPARISON_FIELDS = (
+    "fixture_id", "league", "home", "away", "kickoff_utc",
+    "model_name", "model_version", "data_sha", "probabilities",
+)
+
+
+def forecast_key(forecast: dict[str, Any]) -> tuple[str, str, str]:
+    """Return the immutable fixture/model identity used by the append-only ledger."""
+    return tuple(str(forecast.get(field, "")) for field in FORECAST_IDENTITY_FIELDS)
+
+
+def _canonical_timestamp(value: Any, field: str) -> str:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field} must include a timezone")
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _forecast_comparison_payload(forecast: dict[str, Any]) -> dict[str, Any]:
+    """Fields that define a forecast; issuance time and ledger hash are audit metadata."""
+    missing = [field for field in FORECAST_COMPARISON_FIELDS if field not in forecast]
+    if missing:
+        raise ValueError(f"Forecast is missing comparison fields: {', '.join(missing)}")
+    probabilities = forecast["probabilities"]
+    if not isinstance(probabilities, dict) or set(probabilities) != {"home", "draw", "away"}:
+        raise ValueError("Forecast probabilities must contain exactly home, draw and away")
+    return {
+        "fixture_id": str(forecast["fixture_id"]),
+        "league": str(forecast["league"]),
+        "home": str(forecast["home"]),
+        "away": str(forecast["away"]),
+        "kickoff_utc": _canonical_timestamp(forecast["kickoff_utc"], "kickoff_utc"),
+        "model_name": str(forecast["model_name"]),
+        "model_version": str(forecast["model_version"]),
+        "data_sha": str(forecast["data_sha"]),
+        "probabilities": {
+            name: float(probabilities[name]) for name in ("home", "draw", "away")
+        },
+    }
+
+
+def load_existing_forecasts(ledger_path: str | Path) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """Load and index the append-only ledger before any new forecast is generated.
+
+    A malformed row or repeated immutable key is treated as ledger corruption;
+    no attempt is made to repair, rewrite, or delete historical lines.
+    """
+    path = Path(ledger_path)
+    indexed: dict[tuple[str, str, str], dict[str, Any]] = {}
+    if not path.exists():
+        return indexed
+    with path.open("r", encoding="utf-8") as stream:
+        for line_no, line in enumerate(stream, start=1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid forecast ledger JSON at {path}:{line_no}") from exc
+            if not isinstance(row, dict):
+                raise ValueError(f"Expected forecast object at {path}:{line_no}")
+            key = forecast_key(row)
+            if not all(key):
+                raise ValueError(f"Forecast ledger row at {path}:{line_no} has an incomplete identity key")
+            if key in indexed:
+                raise ForecastConflictError(
+                    f"CRITICAL LEDGER CONFLICT: duplicate immutable key already exists in "
+                    f"{path}:{line_no}: {key}"
+                )
+            # Validate the full comparison payload while loading, before doing any work.
+            _forecast_comparison_payload(row)
+            indexed[key] = row
+    return indexed
+
+
 def current_code_hash() -> str:
     root = Path(__file__).resolve().parent
     digest = hashlib.sha256()
@@ -203,8 +285,12 @@ def main() -> int:
             return 0
         aliases = read_aliases(args.aliases) if Path(args.aliases).exists() else {}
         code_sha = current_code_hash()
+        # Snapshot the complete ledger before generating any forecast. Existing rows are
+        # immutable: identical predictions are no-ops; changed predictions are conflicts.
+        existing_forecasts = load_existing_forecasts(args.ledger)
         recorded = 0
         skipped = 0
+        already_recorded = 0
         # Load each historical league once; all fixture forecasts remain individually immutable.
         # A team without a verified historical identity invalidates that fixture only, not
         # unrelated fixtures. Never invent an alias or substitute another club's history.
@@ -219,6 +305,10 @@ def main() -> int:
                         fixture, history, aliases=aliases, code_sha=code_sha,
                         minimum_training_matches=args.minimum_training_matches,
                     )
+                except ForecastConflictError:
+                    # A conflicting immutable record is a ledger-integrity failure,
+                    # never an ordinary fixture exclusion.
+                    raise
                 except (ValueError, RuntimeError, KeyError, TypeError) as exc:
                     skipped += 1
                     print(
@@ -226,8 +316,26 @@ def main() -> int:
                         file=sys.stderr,
                     )
                     continue
-                # Ledger integrity failures (e.g. duplicate immutable keys) remain fatal.
+                key = forecast_key(forecast)
+                existing = existing_forecasts.get(key)
+                if existing is not None:
+                    if _forecast_comparison_payload(existing) == _forecast_comparison_payload(forecast):
+                        already_recorded += 1
+                        print(
+                            f"Forecast already recorded; skipped safely: "
+                            f"{key[0]} | {key[1]} | {key[2]}"
+                        )
+                        continue
+                    raise ForecastConflictError(
+                        "CRITICAL FORECAST CONFLICT: immutable ledger key "
+                        f"{key} already exists, but forecast inputs or probabilities differ. "
+                        "The existing ledger row was preserved; no overwrite was attempted."
+                    )
+
+                # The ledger writer performs its own duplicate guard as a final integrity
+                # check. Only a genuinely new immutable key reaches the append operation.
                 row = record_forecast(args.ledger, forecast)
+                existing_forecasts[key] = row
                 recorded += 1
                 p = row["probabilities"]
                 print(
@@ -235,9 +343,10 @@ def main() -> int:
                     f"A {p['away']:.3f} | sha256 {row['forecast_sha256']}"
                 )
         print(f"Recorded {recorded} prospective candidate forecast(s) in {args.ledger}")
+        print(f"Already-recorded identical forecast(s) skipped safely: {already_recorded}")
         print(f"Safely skipped {skipped} fixture(s) lacking valid pre-kickoff training data or identity.")
         print("Status: experimental candidate; not yet prospectively validated against the market.")
-        if recorded == 0 and skipped:
+        if recorded == 0 and skipped and already_recorded == 0:
             print("No forecasts were recorded because every fixture was skipped safely.", file=sys.stderr)
             return 1
         return 0
