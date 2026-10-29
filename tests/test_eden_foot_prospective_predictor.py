@@ -139,7 +139,7 @@ def _run_main_with_forecast(monkeypatch, tmp_path, *, probabilities, data_sha="d
     fixtures_path = tmp_path / "fixtures-idempotency.jsonl"
     aliases_path = tmp_path / "aliases-idempotency.json"
     ledger_path = tmp_path / "ledger-idempotency.jsonl"
-    fixtures_path.write_text(json.dumps(FIXTURE) + "\\n", encoding="utf-8")
+    fixtures_path.write_text(json.dumps(FIXTURE) + "\n", encoding="utf-8")
     aliases_path.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(sys, "argv", [
         "eden_foot_prospective_predictor.py",
