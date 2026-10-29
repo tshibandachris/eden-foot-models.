@@ -180,7 +180,7 @@ FORECAST_IDENTITY_FIELDS = (
 )
 FORECAST_COMPARISON_FIELDS = (
     "fixture_id", "league", "home", "away", "kickoff_utc",
-    "model_name", "model_version", "code_sha", "data_sha", "probabilities",
+    "model_name", "model_version", "data_sha", "probabilities",
 )
 
 
@@ -212,7 +212,6 @@ def _forecast_comparison_payload(forecast: dict[str, Any]) -> dict[str, Any]:
         "kickoff_utc": _canonical_timestamp(forecast["kickoff_utc"], "kickoff_utc"),
         "model_name": str(forecast["model_name"]),
         "model_version": str(forecast["model_version"]),
-        "code_sha": str(forecast["code_sha"]),
         "data_sha": str(forecast["data_sha"]),
         "probabilities": {
             name: float(probabilities[name]) for name in ("home", "draw", "away")
@@ -306,6 +305,10 @@ def main() -> int:
                         fixture, history, aliases=aliases, code_sha=code_sha,
                         minimum_training_matches=args.minimum_training_matches,
                     )
+                except ForecastConflictError:
+                    # A conflicting immutable record is a ledger-integrity failure,
+                    # never an ordinary fixture exclusion.
+                    raise
                 except (ValueError, RuntimeError, KeyError, TypeError) as exc:
                     skipped += 1
                     print(
