@@ -74,6 +74,49 @@ def test_jsonl_keys_are_flat_and_types_are_normalized(tmp_path):
     assert snapshot(tmp_path) == before
 
 
+def test_nested_jsonl_fields_and_types_are_audited(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    source = data / "sample.jsonl"
+    source.write_text(
+        '{"home_team": {"name": "A", "id": 1}, "probabilities": {"home": 0.6}}\n',
+        encoding="utf-8",
+    )
+    baseline = tmp_path / "baseline.json"
+    schema = generate(data, baseline)["schemas"]["sample.jsonl"]
+    assert schema["columns_or_keys"]["home_team"] == "dict"
+    assert schema["nested_paths"] == {
+        "home_team.id": "integer",
+        "home_team.name": "string",
+        "probabilities.home": "float",
+    }
+
+    source.write_text(
+        '{"home_team": {"name": "A", "short_name": "AA", "id": "1"}, '
+        '"probabilities": {"home": "0.6"}}\n',
+        encoding="utf-8",
+    )
+    result = run_audit(data, baseline, "--check")
+    assert result.returncode == 1
+    assert "nouveau chemin imbriqué non approuvé: home_team.short_name" in result.stderr
+    assert "type imbriqué de home_team.id: integer -> string" in result.stderr
+    assert "type imbriqué de probabilities.home: float -> string" in result.stderr
+
+
+def test_legacy_baseline_without_nested_paths_remains_readable(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "sample.jsonl").write_text(
+        '{"home_team": {"name": "A"}}\n', encoding="utf-8"
+    )
+    baseline = tmp_path / "baseline.json"
+    document = generate(data, baseline)
+    document["schemas"]["sample.jsonl"].pop("nested_paths")
+    baseline.write_text(json.dumps(document), encoding="utf-8")
+    result = run_audit(data, baseline, "--check")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_empty_catalog_is_rejected(tmp_path):
     data = tmp_path / "data"
     data.mkdir()
