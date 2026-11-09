@@ -30,9 +30,9 @@ def fetch(provider_id, token):
 
 
 def main(forecasts_path, results_path):
-    token = os.environ.get("FOOTBALL_DATA_TOKEN")
+    token = os.environ.get("FOOTBALL_DATA_API_TOKEN")
     if not token:
-        sys.exit("Définissez FOOTBALL_DATA_TOKEN (clé football-data.org).")
+        sys.exit("Définissez FOOTBALL_DATA_API_TOKEN (clé football-data.org).")
     done = {r["fixture_id"] for r in read_jsonl(results_path)}
     todo = sorted({f["fixture_id"] for f in read_jsonl(forecasts_path)} - done)
     print(f"{len(todo)} match(s) à vérifier")
