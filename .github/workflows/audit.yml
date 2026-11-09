@@ -1,0 +1,30 @@
+name: Audit forecasts
+on:
+  push:
+    branches: [audit/forecast-evaluation]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Registre à jour depuis main (lecture seule)
+        run: git show origin/main:data/prospective_forecasts.jsonl > data/prospective_forecasts.jsonl
+      - name: Résultats
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_API_TOKEN }}
+        run: python audit/fetch_audit_results.py data/prospective_forecasts.jsonl audit/results.jsonl
+      - name: Audit
+        run: python audit/forecast_audit.py data/prospective_forecasts.jsonl audit/results.jsonl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit-results
+          path: audit/results.jsonl
