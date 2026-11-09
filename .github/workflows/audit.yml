@@ -1,3 +1,8 @@
+name: Résultats
+        env:
+          FOOTBALL_DATA_API_TOKEN: ${{ secrets.FOOTBALL_DATA_API_TOKEN || secrets.FOOTBALL_DATA_TOKEN }}
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN || secrets.FOOTBALL_DATA_API_TOKEN }}
+        run: python audit/fetch_audit_results.py data/prospective_forecasts.jsonl audit/results.jsonl
 name: Audit forecasts
 on:
   push:
